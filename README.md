@@ -1,7 +1,17 @@
-# [Auto File DRM Encryption SDK](https://www.easefilter.com/kb/auto-file-drm-encryption-tool.htm)
-The EaseFilter Encryption Filter Driver(EEFD) SDK allows you to develop the auto file encryption application. The DRM encryption application allows you to embed the custom digital rights management( DRM) data to the encrypted files. With the embedded DRM in the encrypted file, you can protect and monitor your business critical document such as intellectual property and product design, wherever it lives or travels, you can allow or block the encrypted file access, you can expire the encrypted file, grant or revoke the access of the encrypted files anywhere and anytime even they were distributed.
+# Auto File DRM Encryption Tool
 
-![File Encryption](https://www.easefilter.com/Images/TransparentFileEncryption.png)
+[![Platform](https://img.shields.io/badge/Platform-Windows-blue.svg)]()
+[![Language](https://img.shields.io/badge/Language-C%23%20%7C%20C++%20%7C%20Python%20%7C%20Rust%20%7C%20Java-success.svg)]()
+[![License](https://img.shields.io/badge/License-Commercial-orange.svg)]()
+![Security](https://img.shields.io/badge/Security-AES--256-red)
+
+The **Auto File DRM Encryption Tool** is a robust, file-system-level encryption solution built on the EaseFilter Encryption Filter Driver (EEFD) SDK. It provides transparent, real-time file encryption for Windows while embedding Digital Rights Management (DRM) metadata directly into the encrypted files. 
+
+This enables persistent data protection, meaning files remain encrypted and access-controlled regardless of where they are moved, copied, or stored.
+
+<Image alt="Diagram showing the architecture of the EaseFilter Secure File Sharing and DRM integration" caption="EaseFilter Secure File Sharing Architecture" src="https://www.easefilter.com/images/auto-file-drm-encryption-architecture.jpg"/>
+
+---
 
 [EaseFilter Encryption Filter Driver(EEFD) SDK](https://www.easefilter.com/kb/transparent-on-access-file-encryption-SDK.htm)
 
@@ -19,6 +29,104 @@ With the access control policies, you can setup the whitelist processes or users
 3. **Process Access Restriction.** EaseFilter Encryption SDK was implemented with [Isolation Mini Filter Driver](https://www.easefilter.com/kb/Isolation_Filter_Driver.htm). The EEFD uses the unique private memory session for every encrypted file open, the clear data won't be shared with other processes even it was opened with memory mapped. 
 4. **Random block level decryption.** You can decrypt the blocks of the file, you don't need to decrypt the whole file for all the time. For large encrypted file, if you only want to read the blocks of the data, it will improve the performance dramatically.
 5. **High encryption or decryption performance.** EaseFilter Encryption Engine utilizes the US FIPS 140-2 compliant Microsoft CNG libraries, it can support AES-NI (or the Intel Advanced Encryption Standard New Instructions; AES-NI), at an algorithm level AES-NI provides significant speedup of AES. For non-Parallel modes of AES operation (CBC encrypt), AES-NI can provide 2-3 fold gain in performance over a completely software encryption. For parallel modes of AES operation (CBC-decrypt, CTR), AES-NI can provide 10x improvement over a completely software encryption.
+
+
+## 🚀 Core Features
+
+*   **Automatic File Encryption:** Transparently encrypts files in real-time as they are created, modified, or copied using strong AES-256 encryption.
+*   **Granular Access Control:** Restrict file access based on user identity, process name, or the digital signature/hash of an executable.
+*   **Zero-Trust Enforcement:** Access is denied by default. Only explicitly whitelisted users or processes can read or modify the decrypted content.
+*   **Persistent DRM Protection:** DRM metadata is embedded in the file header. If files are exfiltrated or copied to unauthorized environments, they remain unreadable ciphertext.
+*   **File Format Agnostic:** Protects any file type—documents, media, source code (C++, Java), CAD files (DWG, STP), and more without requiring application-level plugins.
+*   **Audit & Monitoring:** Logs all file access attempts (both authorized and denied) for compliance, forensics, and security auditing.
+
+---
+
+## 🏗️ How It Works
+
+This tool intercepts I/O requests directly at the Windows file system level. Because operations happen in kernel memory via the **EaseFilter Encryption Filter Driver (EEFD)**, it performs encryption and decryption on the fly without requiring the user to manually encrypt files.
+
+When an unauthorized process (like Windows Explorer, an email client, or a web browser) tries to copy or attach the file, it is denied decryption access and only copies the raw ciphertext, effectively preventing data leaks.
+
+---
+
+## 💻 Getting Started
+
+### 1. Set Up the Auto-Encryption Filter Rule
+
+Configure the filter driver to automatically encrypt all new files created in a specific folder. 
+
+```csharp
+using System.Runtime.InteropServices;
+
+// Initialize the Filter Control
+FilterControl filterControl = new FilterControl();
+FilterAPI.FilterType filterType = FilterAPI.FilterType.CONTROL_FILTER | 
+                                  FilterAPI.FilterType.ENCRYPTION_FILTER | 
+                                  FilterAPI.FilterType.PROCESS_FILTER;
+
+string licenseKey = "YOUR_LICENSE_KEY";
+string lastError = string.Empty;
+filterControl.StartFilter(filterType, 5, 30, licenseKey, ref lastError);
+
+// Setup a file filter rule for a target folder
+FileFilter fileFilter = new FileFilter("C:\\encryptionFolder\\*");
+fileFilter.EnableEncryption = true;
+
+// Set your 256-bit AES encryption key
+byte[] encryptionKey = { /* 32 bytes hex array */ };
+fileFilter.EncryptionKey = encryptionKey;
+
+// Add the rule to the engine
+filterControl.AddFilter(fileFilter);
+```
+
+### 2. Embed Custom DRM Metadata
+
+Enable the capability to embed detailed DRM control data into the headers of encrypted files. This allows you to verify access rules dynamically via a callback when a file is opened.
+
+```csharp
+// Enable encryption key requests from the service to append custom DRM
+fileFilter.EnableEncryptionKeyFromService = true;
+fileFilter.OnFilterRequestEncryptKey += OnFilterRequestEncryptKey;
+
+public void OnFilterRequestEncryptKey(object sender, EncryptEventArgs e) 
+{
+    e.ReturnStatus = NtStatus.Status.Success;
+
+    if (e.IsNewCreatedFile) 
+    {
+        // Embed custom tag data into the header of the newly encrypted file
+        e.EncryptionTag = UnicodeEncoding.Unicode.GetBytes(e.FileName);
+    } 
+    else 
+    {
+        // File is being opened: evaluate permissions
+        // e.ReturnStatus = NtStatus.Status.AccessDenied; // Block access
+        // e.ReturnStatus = NtStatus.Status.FileIsEncrypted; // Return raw ciphertext
+        
+        byte[] tagData = e.EncryptionTag; // Retrieve DRM tag
+    }
+
+    // Supply the encryption key to decrypt the authorized request
+    e.EncryptionKey = Utils.GetKeyByPassPhrase(GlobalConfig.MasterPassword, 32);
+}
+```
+
+---
+
+## 🔐 Supported DRM Control Options
+
+The built-in `AES_TAG_CONTROL_DATA` structure allows you to embed native DRM policies directly into the file header. Through the `AESFlags` configuration, you can enforce:
+
+| Policy | Description |
+| :--- | :--- |
+| **Expiration Control** | Sets an expiration date (`Flags_Enabled_Expire_Time`). File cannot be accessed after this timestamp. |
+| **Computer ID Restriction** | Binds the encrypted file to a specific machine hardware ID (`Flags_Enabled_Check_Computer_Id`). |
+| **User Verification** | Include or Exclude specific Windows user accounts from accessing the file (`Flags_Enabled_Check_UserName`). |
+| **Process Verification** | Whitelist or Blacklist specific applications (e.g., block `explorer.exe` or `outlook.exe`) (`Flags_Enabled_Check_ProcessName`). |
+
+---
 
 ## A C# Auto File DRM Encryption Example
 The C# auto file DRM encryption example allows you to embed the build in DRM data to the new encrypted file, the build in DRM data includes the access control policies, allow you to control the encrypted file access without the center server. You also can embed the custom DRM data to the new encrypted file, and store your access control policies in the center server, the encrypted file access can be controlled and monitored by the center server, you can expire the encrypted file, grant or revoke the access of the encrypted files anywhere and anytime even they were distributed, you will know who and when your encrytped file was accessed.
@@ -67,6 +175,17 @@ The C# auto file DRM encryption example allows you to embed the build in DRM dat
 * [Filter Driver Developer Guide](https://www.easefilter.com/kb/DeveloperGuide.htm)
 * [MiniFilter Filter Driver Framework](https://www.easefilter.com/kb/minifilter-framework.htm)
 * [Isolation Filter Driver](https://www.easefilter.com/kb/Isolation_Filter_Driver.htm)
+
+## License
+
+This repository contains two distinct licensing categories:
+
+1. **Wrapper/Implementation Code (MIT License):** 
+   The source code, scripts, and configuration files provided directly in this repository are licensed under the [MIT License](LICENSE). You are free to modify, distribute, and use this specific integration code.
+
+2. **EaseFilter SDK (Commercial License):**
+   This project requires the EaseFilter SDK (including its binaries, filter drivers, and core libraries) to function. The EaseFilter SDK is **proprietary commercial software** and is strictly excluded from the MIT License.   
+   To use the EaseFilter SDK for commercial purposes or in a production environment, you must obtain a valid commercial license directly from [EaseFilter](https://www.easefilter.com/license.pdf).
 
 ## Support
 If you have questions or need help, please contact support@easefilter.com 
